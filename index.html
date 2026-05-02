@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>皮克敏菇菇重生計算器</title>
+    <title>皮克敏菇菇重生計算器 (雲端儲存版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
@@ -18,7 +18,6 @@
             transform: translateY(-4px);
             box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.1);
         }
-        /* 隱藏數字輸入框箭頭 */
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -29,7 +28,6 @@
             from { opacity: 0; transform: scale(0.9); }
             to { opacity: 1; transform: scale(1); }
         }
-        .list-move { transition: transform 0.5s; }
     </style>
 </head>
 <body class="p-4 md:p-8 relative min-h-screen">
@@ -40,7 +38,12 @@
                 <h1 class="text-2xl font-bold text-green-800 flex items-center gap-2">
                     <span class="text-3xl">🍄</span> 皮克敏菇菇追蹤器
                 </h1>
-                <p class="text-green-600 text-sm mt-1">重生機制：破壞後 5 分鐘生成</p>
+                <div class="flex items-center gap-2 mt-1">
+                    <p class="text-green-600 text-sm">重生機制：+5 分鐘</p>
+                    <span id="sync-status" class="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span> 連線中...
+                    </span>
+                </div>
             </div>
             <div class="flex flex-wrap justify-center md:justify-end items-center gap-3">
                 <div class="text-right">
@@ -48,15 +51,9 @@
                     <div id="current-time" class="text-2xl font-mono font-bold text-gray-800">00:00:00</div>
                 </div>
                 <button id="notif-btn" onclick="requestNotifPermission()" class="flex items-center gap-1 text-xs px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all shadow-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                    </svg>
-                    <span id="notif-btn-text">開啟通知</span>
+                    開啟通知
                 </button>
                 <button onclick="addLocation()" class="flex items-center gap-1 text-xs px-4 py-2 bg-green-600 text-white rounded-full hover:bg-green-700 transition-all shadow-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                    </svg>
                     新增標點
                 </button>
             </div>
@@ -72,7 +69,7 @@
                 </div>
                 <div class="ml-3">
                     <p class="text-sm text-blue-700">
-                        點擊卡片標題可<b>修改名稱</b>。系統會自動依照重生時間先後進行排序。
+                        <b>資料已自動儲存：</b>您的標點資料已加密儲存在雲端，下次開啟此網頁會自動載入。
                     </p>
                 </div>
             </div>
@@ -80,12 +77,16 @@
 
         <!-- Grid Container -->
         <div id="mushroom-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Cards will be generated here -->
+            <!-- Loading state -->
+            <div class="col-span-full py-12 text-center text-gray-400">
+                正在載入您的標點資料...
+            </div>
         </div>
 
         <!-- Footer -->
         <footer class="mt-12 text-center text-gray-400 text-xs pb-8">
-            <p>本工具僅供玩家計算參考使用 | 支援動態排序與地點編輯</p>
+            <p id="user-id-display">用戶 ID: 載入中...</p>
+            <p class="mt-1">本工具提供個人化雲端儲存，確保資料長期有效</p>
         </footer>
     </div>
 
@@ -106,54 +107,109 @@
         </div>
     </div>
 
-    <script>
-        // 初始化地點資料
-        let locations = [
-            { id: self.crypto.randomUUID(), name: "唐獅子", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "景福宮", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "景福宮石燈", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "集英里公告欄右瓢蟲", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "新光獅", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "流水藝術裝置", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "晴光商圈 Flower Tower", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "中山國小站2號出口", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "妙道院", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "集客獅", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "吉林路美食", h: '', m: '', s: '', spawnTime: null, notified: false },
-            { id: self.crypto.randomUUID(), name: "薇閣精品旅館", h: '', m: '', s: '', spawnTime: null, notified: false }
-        ];
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        function updateClock() {
+        // Firebase Configuration from environment
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let locations = [];
+        let currentUser = null;
+
+        // 1. Auth Logic (Rule 3)
+        const initAuth = async () => {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('user-id-display').textContent = `用戶 ID: ${user.uid}`;
+                setSyncStatus('online');
+                subscribeToData(user.uid);
+            } else {
+                initAuth();
+            }
+        });
+
+        // 2. Data Subscription (Rule 1: Private Path)
+        function subscribeToData(uid) {
+            const colRef = collection(db, 'artifacts', appId, 'users', uid, 'locations');
+            
+            // Listen for changes
+            onSnapshot(colRef, (snapshot) => {
+                if (snapshot.empty) {
+                    // 如果是新用戶，初始化預設 12 個點
+                    initializeDefaultData(uid);
+                } else {
+                    locations = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data(),
+                        spawnTime: doc.data().spawnTimestamp ? new Date(doc.data().spawnTimestamp) : null
+                    }));
+                    renderCards();
+                }
+            }, (error) => {
+                console.error("Firestore error:", error);
+                setSyncStatus('error');
+            });
+        }
+
+        async function initializeDefaultData(uid) {
+            const defaults = [
+                "唐獅子", "景福宮", "景福宮石燈", "集英里公告欄右瓢蟲",
+                "新光獅", "流水藝術裝置", "晴光商圈 Flower Tower",
+                "中山國小站2號出口", "妙道院", "集客獅",
+                "吉林路美食", "薇閣精品旅館"
+            ];
+            
+            for (const name of defaults) {
+                const id = crypto.randomUUID();
+                const docRef = doc(db, 'artifacts', appId, 'users', uid, 'locations', id);
+                await setDoc(docRef, {
+                    name,
+                    h: '', m: '', s: '',
+                    spawnTimestamp: null,
+                    notified: false,
+                    createdAt: Date.now()
+                });
+            }
+        }
+
+        // 3. UI logic
+        window.updateClock = () => {
             const now = new Date();
             const timeStr = now.toLocaleTimeString('zh-TW', { hour12: false });
             document.getElementById('current-time').textContent = timeStr;
             checkNotifications(now);
-        }
-
-        setInterval(updateClock, 1000);
-        updateClock();
-
-        window.onload = () => {
-            updateNotifButtonUI();
-            renderCards();
         };
+        setInterval(window.updateClock, 1000);
 
         function renderCards() {
             const grid = document.getElementById('mushroom-grid');
             
-            // 排序邏輯：有時間的排前面，且按照時間先後排序；沒時間的排後面
             const sortedLocations = [...locations].sort((a, b) => {
                 if (a.spawnTime && b.spawnTime) return a.spawnTime - b.spawnTime;
                 if (a.spawnTime) return -1;
                 if (b.spawnTime) return 1;
-                return 0;
+                return (a.createdAt || 0) - (b.createdAt || 0);
             });
 
             grid.innerHTML = '';
             sortedLocations.forEach((loc) => {
                 const card = document.createElement('div');
                 card.className = 'mushroom-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:border-green-300';
-                card.dataset.id = loc.id;
                 
                 const timeText = loc.spawnTime 
                     ? `${loc.spawnTime.getHours().toString().padStart(2, '0')}:${loc.spawnTime.getMinutes().toString().padStart(2, '0')}:${loc.spawnTime.getSeconds().toString().padStart(2, '0')}`
@@ -164,40 +220,25 @@
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-3 gap-2">
                         <input type="text" value="${loc.name}" 
-                               onchange="updateName('${loc.id}', this.value)"
-                               class="font-bold text-gray-800 leading-tight bg-transparent border-b border-transparent focus:border-green-500 outline-none w-full py-1 transition-all" 
-                               placeholder="輸入地點名稱">
-                        <button onclick="deleteLocation('${loc.id}')" class="text-gray-300 hover:text-red-500 transition-colors p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                               onchange="window.updateName('${loc.id}', this.value)"
+                               class="font-bold text-gray-800 leading-tight bg-transparent border-b border-transparent focus:border-green-500 outline-none w-full py-1 transition-all">
+                        <button onclick="window.deleteLocation('${loc.id}')" class="text-gray-300 hover:text-red-500 transition-colors p-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-xs text-gray-400 mb-2 font-medium">剩餘時間 (時/分/秒)</label>
                             <div class="flex items-center gap-2">
-                                <input type="number" value="${loc.h}" placeholder="時" 
-                                       oninput="handleInput('${loc.id}', 'h', this.value)"
-                                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
-                                <input type="number" value="${loc.m}" placeholder="分" 
-                                       oninput="handleInput('${loc.id}', 'm', this.value)"
-                                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
-                                <input type="number" value="${loc.s}" placeholder="秒" 
-                                       oninput="handleInput('${loc.id}', 's', this.value)"
-                                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                                <input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
+                                <input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
+                                <input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
                             </div>
                         </div>
-                        <div class="pt-3 border-t border-dashed border-gray-100">
-                            <div class="text-xs text-gray-400">預計下次生成時間</div>
-                            <div class="flex items-center justify-between mt-1">
-                                <div id="result-${loc.id}" class="text-xl font-mono font-bold ${resultColor}">${timeText}</div>
-                                <button onclick="copyTime('${loc.id}')" class="text-gray-300 hover:text-green-500 transition-colors p-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                                    </svg>
-                                </button>
-                            </div>
+                        <div class="pt-3 border-t border-dashed border-gray-100 flex items-center justify-between">
+                            <div id="result-${loc.id}" class="text-xl font-mono font-bold ${resultColor}">${timeText}</div>
+                            <button onclick="window.copyTime('${loc.id}')" class="text-gray-300 hover:text-green-500 transition-colors p-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                            </button>
                         </div>
                     </div>
                 `;
@@ -205,78 +246,76 @@
             });
         }
 
-        // 處理輸入，為了不讓排序在打字時干擾焦點，使用更靈活的更新策略
-        function handleInput(id, field, value) {
+        // 暴露給全域的方法
+        window.handleInput = async (id, field, value) => {
+            if (!currentUser) return;
             const loc = locations.find(l => l.id === id);
             if (!loc) return;
             
             loc[field] = value;
-            
             const h = parseInt(loc.h) || 0;
             const m = parseInt(loc.m) || 0;
             const s = parseInt(loc.s) || 0;
 
-            if (loc.h === '' && loc.m === '' && loc.s === '') {
-                loc.spawnTime = null;
-                loc.notified = false;
-            } else {
+            let spawnTimestamp = null;
+            if (loc.h !== '' || loc.m !== '' || loc.s !== '') {
                 const totalSeconds = (h * 3600) + (m * 60) + s;
-                const now = new Date();
-                loc.spawnTime = new Date(now.getTime() + (totalSeconds + 300) * 1000);
-                loc.notified = false;
+                spawnTimestamp = Date.now() + (totalSeconds + 300) * 1000;
             }
 
-            // 更新單個卡片的 UI 顯示而不重新渲染整個列表 (避免焦點丟失)
-            const resultEl = document.getElementById(`result-${id}`);
-            if (loc.spawnTime) {
-                const hoursStr = loc.spawnTime.getHours().toString().padStart(2, '0');
-                const minsStr = loc.spawnTime.getMinutes().toString().padStart(2, '0');
-                const secsStr = loc.spawnTime.getSeconds().toString().padStart(2, '0');
-                resultEl.textContent = `${hoursStr}:${minsStr}:${secsStr}`;
-                resultEl.className = "text-xl font-mono font-bold text-green-600";
-            } else {
-                resultEl.textContent = "-- : -- : --";
-                resultEl.className = "text-xl font-mono font-bold text-gray-300";
-            }
+            // 更新到 Firestore
+            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
+            await setDoc(docRef, {
+                ...loc,
+                spawnTimestamp,
+                notified: false,
+                spawnTime: null // 清除循環引用
+            }, { merge: true });
 
-            // 使用防抖或在失焦後排序 (這裡選用延時觸發排序，給用戶輸入緩衝)
+            // 觸發局部 UI 更新 (提升流暢度)
             clearTimeout(window.sortTimeout);
-            window.sortTimeout = setTimeout(() => {
-                renderCards();
-            }, 3000); // 3秒無動作後自動排序
-        }
+            window.sortTimeout = setTimeout(() => { renderCards(); }, 5000);
+        };
 
-        function updateName(id, newName) {
-            const loc = locations.find(l => l.id === id);
-            if (loc) loc.name = newName;
-        }
+        window.updateName = async (id, newName) => {
+            if (!currentUser) return;
+            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
+            await setDoc(docRef, { name: newName }, { merge: true });
+        };
 
-        function addLocation() {
-            const newLoc = {
-                id: self.crypto.randomUUID(),
+        window.addLocation = async () => {
+            if (!currentUser) return;
+            setSyncStatus('syncing');
+            const id = crypto.randomUUID();
+            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
+            await setDoc(docRef, {
                 name: "新地點",
                 h: '', m: '', s: '',
-                spawnTime: null,
-                notified: false
-            };
-            locations.unshift(newLoc);
-            renderCards();
-        }
+                spawnTimestamp: null,
+                notified: false,
+                createdAt: Date.now()
+            });
+            setSyncStatus('online');
+        };
 
-        function deleteLocation(id) {
-            locations = locations.filter(l => l.id !== id);
-            renderCards();
-        }
+        window.deleteLocation = async (id) => {
+            if (!currentUser) return;
+            setSyncStatus('syncing');
+            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
+            await deleteDoc(docRef);
+            setSyncStatus('online');
+        };
 
         function checkNotifications(now) {
             locations.forEach(loc => {
                 if (!loc.spawnTime || loc.notified) return;
-
                 const diffSecs = Math.floor((loc.spawnTime.getTime() - now.getTime()) / 1000);
-
                 if (diffSecs <= 120 && diffSecs > 0) {
                     triggerAlert(loc.name);
                     loc.notified = true;
+                    // 更新通知狀態到資料庫，避免重複通知
+                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', loc.id);
+                    setDoc(docRef, { notified: true }, { merge: true });
                 }
             });
         }
@@ -290,7 +329,6 @@
                 });
                 n.onclick = () => { window.focus(); n.close(); };
             }
-
             playBeep();
             const modal = document.getElementById('alert-modal');
             const msg = document.getElementById('modal-msg');
@@ -298,22 +336,31 @@
             modal.style.display = 'flex';
         }
 
-        function closeModal() {
-            document.getElementById('alert-modal').style.display = 'none';
-        }
+        window.closeModal = () => { document.getElementById('alert-modal').style.display = 'none'; };
 
-        function requestNotifPermission() {
+        window.requestNotifPermission = () => {
             if (!("Notification" in window)) return;
-            Notification.requestPermission().then(() => updateNotifButtonUI());
+            Notification.requestPermission().then(() => updateNotifUI());
+        };
+
+        function updateNotifUI() {
+            const btn = document.getElementById('notif-btn');
+            if (Notification.permission === "granted") {
+                btn.className = "flex items-center gap-1 text-xs px-4 py-2 bg-green-100 text-green-700 rounded-full cursor-default shadow-sm";
+                btn.textContent = "通知已開啟";
+                btn.onclick = null;
+            }
         }
 
-        function updateNotifButtonUI() {
-            const btn = document.getElementById('notif-btn');
-            const btnText = document.getElementById('notif-btn-text');
-            if (Notification.permission === "granted") {
-                btn.className = "flex items-center gap-1 text-xs px-4 py-2 bg-green-100 text-green-700 rounded-full cursor-default";
-                btnText.textContent = "通知已開啟";
-                btn.onclick = null;
+        function setSyncStatus(status) {
+            const el = document.getElementById('sync-status');
+            const dot = el.querySelector('span');
+            if (status === 'online') {
+                el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> 雲端連線中`;
+            } else if (status === 'syncing') {
+                el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> 同步資料中`;
+            } else if (status === 'error') {
+                el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 連線錯誤`;
             }
         }
 
@@ -328,27 +375,24 @@
                 gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
                 osc.connect(gain);
                 gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 1.5);
+                osc.start(); osc.stop(ctx.currentTime + 1.5);
             } catch (e) {}
         }
 
-        function copyTime(id) {
+        window.copyTime = (id) => {
             const el = document.getElementById(`result-${id}`);
             const text = el ? el.textContent : "";
             if (text.includes("--")) return;
-            
             const dummy = document.createElement("textarea");
             document.body.appendChild(dummy);
             dummy.value = text;
             dummy.select();
             document.execCommand("copy");
             document.body.removeChild(dummy);
-
             const toast = document.getElementById('toast');
             toast.style.opacity = '1';
             setTimeout(() => { toast.style.opacity = '0'; }, 2000);
-        }
+        };
     </script>
 </body>
 </html>
