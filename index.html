@@ -46,11 +46,12 @@
                     <div class="text-sm text-gray-500 uppercase tracking-wider">目前時間</div>
                     <div id="current-time" class="text-2xl font-mono font-bold text-gray-800">00:00:00</div>
                 </div>
-                <button id="notif-btn" onclick="requestNotifPermission()" class="flex items-center gap-1 text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors">
+                <!-- 強化權限按鈕 -->
+                <button id="notif-btn" onclick="requestNotifPermission()" class="flex items-center gap-1 text-xs px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all shadow-md">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
-                    開啟通知提醒
+                    <span id="notif-btn-text">點擊開啟「系統桌面通知」</span>
                 </button>
             </div>
         </div>
@@ -65,7 +66,7 @@
                 </div>
                 <div class="ml-3">
                     <p class="text-sm text-blue-700">
-                        設定完成後，系統會在菇菇重生的 <b>2 分鐘前</b> 彈窗提醒你準備開打。
+                        <b>重要：</b>請務必點擊右上角按鈕並允許權限，才能在切換分頁後收到系統推播。
                     </p>
                 </div>
             </div>
@@ -87,8 +88,8 @@
         已複製時間！
     </div>
 
-    <!-- Alert Modal Container -->
-    <div id="alert-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-[100] p-4">
+    <!-- Alert Modal Container (Internal UI) -->
+    <div id="alert-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-[100] p-4">
         <div class="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl modal-enter">
             <div class="text-5xl mb-4">🍄</div>
             <h2 class="text-2xl font-bold text-gray-800 mb-2">準備打菇菇！</h2>
@@ -107,23 +108,24 @@
             "吉林路美食", "薇閣精品旅館"
         ];
 
-        // State to track spawn times and whether notification was sent
-        let spawnData = {}; // { id: { time: Date, notified: boolean, name: string } }
+        let spawnData = {};
 
         function updateClock() {
             const now = new Date();
             const timeStr = now.toLocaleTimeString('zh-TW', { hour12: false });
             document.getElementById('current-time').textContent = timeStr;
-
-            // Check for notifications
             checkNotifications(now);
         }
 
         setInterval(updateClock, 1000);
         updateClock();
 
+        // 頁面加載時檢查一次權限狀態
+        window.onload = () => {
+            updateNotifButtonUI();
+        };
+
         const grid = document.getElementById('mushroom-grid');
-        
         locations.forEach((name, index) => {
             const card = document.createElement('div');
             card.className = 'mushroom-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:border-green-300';
@@ -137,20 +139,17 @@
                         <label class="block text-xs text-gray-400 mb-2 font-medium">剩餘時間 (時 / 分 / 秒)</label>
                         <div class="flex items-center gap-2">
                             <div class="flex-1">
-                                <input type="number" id="h-${index}" placeholder="0" min="0"
-                                       oninput="updateCalc(${index})"
+                                <input type="number" id="h-${index}" placeholder="0" min="0" oninput="updateCalc(${index})"
                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
                                 <span class="text-[10px] text-gray-400 block text-center mt-1">時</span>
                             </div>
                             <div class="flex-1">
-                                <input type="number" id="m-${index}" placeholder="0" min="0" max="59"
-                                       oninput="updateCalc(${index})"
+                                <input type="number" id="m-${index}" placeholder="0" min="0" max="59" oninput="updateCalc(${index})"
                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
                                 <span class="text-[10px] text-gray-400 block text-center mt-1">分</span>
                             </div>
                             <div class="flex-1">
-                                <input type="number" id="s-${index}" placeholder="0" min="0" max="59"
-                                       oninput="updateCalc(${index})"
+                                <input type="number" id="s-${index}" placeholder="0" min="0" max="59" oninput="updateCalc(${index})"
                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
                                 <span class="text-[10px] text-gray-400 block text-center mt-1">秒</span>
                             </div>
@@ -196,7 +195,6 @@
             resultEl.textContent = `${hoursStr}:${minsStr}:${secsStr}`;
             resultEl.className = "text-xl font-mono font-bold text-green-600";
 
-            // Save to tracking state
             spawnData[id] = {
                 time: spawnTime,
                 notified: false,
@@ -212,7 +210,7 @@
                 const diffMs = data.time.getTime() - now.getTime();
                 const diffSecs = Math.floor(diffMs / 1000);
 
-                // If less than or equal to 120 seconds (2 minutes)
+                // 2分鐘前觸發 (120秒)
                 if (diffSecs <= 120 && diffSecs > 0) {
                     triggerAlert(data.name);
                     data.notified = true;
@@ -221,46 +219,61 @@
         }
 
         function triggerAlert(locationName) {
-            // 1. Browser Notification
+            // 1. 系統級別通知 (桌面推播，這才能在切換視窗時生效)
             if (Notification.permission === "granted") {
-                new Notification("菇菇提醒！", {
-                    body: `${locationName} 將在 2 分鐘後重生，準備開打！`,
-                    icon: "https://cdn-icons-png.flaticon.com/512/3579/3579130.png"
+                const n = new Notification("皮克敏菇菇重生提醒", {
+                    body: `【${locationName}】將在 2 分鐘後重生！`,
+                    icon: "https://cdn-icons-png.flaticon.com/512/3579/3579130.png",
+                    tag: `pikmin-${locationName}`, // 防止重複發送相同地點
+                    requireInteraction: true // 通知會一直停留在螢幕直到用戶點擊
                 });
+                n.onclick = () => { window.focus(); n.close(); };
             }
 
-            // 2. Play subtle sound
+            // 2. 播放提示音 (背景分頁時音效也會播放，提醒你切回來)
             playBeep();
 
-            // 3. Custom Modal Alert
+            // 3. 網頁內彈窗 (僅在你看著網頁時能看到)
             const modal = document.getElementById('alert-modal');
             const msg = document.getElementById('modal-msg');
             msg.innerHTML = `<span class="font-bold text-green-600">${locationName}</span><br>即將在 2 分鐘後重生。`;
-            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
         }
 
         function closeModal() {
-            document.getElementById('alert-modal').classList.add('hidden');
+            document.getElementById('alert-modal').style.display = 'none';
         }
 
         function requestNotifPermission() {
             if (!("Notification" in window)) {
-                alert("此瀏覽器不支持桌面通知");
+                alert("此瀏覽器不支持桌面通知功能");
                 return;
             }
 
             Notification.requestPermission().then(permission => {
-                const btn = document.getElementById('notif-btn');
+                updateNotifButtonUI();
                 if (permission === "granted") {
-                    btn.textContent = "通知功能已開啟";
-                    btn.classList.replace('bg-blue-100', 'bg-green-100');
-                    btn.classList.replace('text-blue-700', 'text-green-700');
-                } else {
-                    btn.textContent = "通知權限被拒絕";
-                    btn.classList.replace('bg-blue-100', 'bg-red-100');
-                    btn.classList.replace('text-blue-700', 'text-red-700');
+                    // 測試通知
+                    new Notification("通知已開啟！", { body: "你現在可以在切換視窗後收到菇菇重生提醒囉。" });
+                } else if (permission === "denied") {
+                    alert("通知權限被拒絕。請在瀏覽器網址列左側點擊「鎖頭」圖示手動允許通知。");
                 }
             });
+        }
+
+        function updateNotifButtonUI() {
+            const btn = document.getElementById('notif-btn');
+            const btnText = document.getElementById('notif-btn-text');
+            
+            if (Notification.permission === "granted") {
+                btn.className = "flex items-center gap-1 text-xs px-4 py-2 bg-green-100 text-green-700 rounded-full cursor-default";
+                btnText.textContent = "系統通知已開啟";
+                btn.onclick = null;
+            } else if (Notification.permission === "denied") {
+                btn.className = "flex items-center gap-1 text-xs px-4 py-2 bg-red-100 text-red-700 rounded-full";
+                btnText.textContent = "通知權限遭拒 (點擊查看)";
+                btn.onclick = () => alert("請至網址列左側調整權限為「允許通知」");
+            }
         }
 
         function playBeep() {
@@ -269,13 +282,13 @@
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
                 gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 osc.start();
-                osc.stop(ctx.currentTime + 1);
+                osc.stop(ctx.currentTime + 1.5);
             } catch (e) { console.log("Audio failed"); }
         }
 
@@ -292,9 +305,7 @@
 
             const toast = document.getElementById('toast');
             toast.style.opacity = '1';
-            setTimeout(() => {
-                toast.style.opacity = '0';
-            }, 2000);
+            setTimeout(() => { toast.style.opacity = '0'; }, 2000);
         }
     </script>
 </body>
