@@ -32,7 +32,7 @@
 </head>
 <body class="p-4 md:p-8 relative min-h-screen">
     <div class="max-w-4xl mx-auto">
-        <!-- Header -->
+        <!-- 標頭區 -->
         <div class="bg-white rounded-3xl p-6 mb-8 shadow-sm border border-green-100 flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-green-800 flex items-center gap-2">
@@ -59,108 +59,111 @@
             </div>
         </div>
 
-        <!-- Info Tooltip -->
-        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg flex justify-between items-center">
-            <div class="flex">
-                <div class="flex-shrink-0 text-blue-400">
-                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1-2 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-                <div class="ml-3">
-                    <p class="text-sm text-blue-700">
-                        <b>資料已自動儲存：</b>您的標點資料已加密儲存在雲端，下次開啟此網頁會自動載入。
-                    </p>
-                </div>
-            </div>
+        <!-- 提示欄 -->
+        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg">
+            <p class="text-sm text-blue-700">
+                <b>自動儲存已啟動：</b>您的資料會自動同步至雲端。若連線失敗，會改存於瀏覽器本地。
+            </p>
         </div>
 
-        <!-- Grid Container -->
+        <!-- 卡片容器 -->
         <div id="mushroom-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- 載入中狀態 -->
             <div id="loading-state" class="col-span-full py-24 text-center text-gray-400 flex flex-col items-center gap-4">
                 <div class="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-                <p>正在載入您的個人標點資料...</p>
-                <p id="retry-msg" class="text-xs hidden">連線時間過長？請嘗試重新整理網頁。</p>
+                <p>正在載入個人標點資料...</p>
+                <p id="retry-msg" class="text-xs hidden text-red-400">系統連線較慢，請嘗試重新整理。若持續失敗將啟動離線模式。</p>
             </div>
         </div>
 
-        <!-- Footer -->
+        <!-- 頁尾 -->
         <footer class="mt-12 text-center text-gray-400 text-xs pb-8">
             <p id="user-id-display">用戶 ID: 驗證中...</p>
-            <p class="mt-1">本工具提供個人化雲端儲存，確保資料長期有效</p>
         </footer>
     </div>
 
-    <!-- Notification Toast -->
+    <!-- 通知小氣泡 -->
     <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50">
         已複製時間！
     </div>
 
-    <!-- Alert Modal Container -->
+    <!-- 提醒視窗 -->
     <div id="alert-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-[100] p-4">
         <div class="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl modal-enter">
             <div class="text-5xl mb-4">🍄</div>
             <h2 class="text-2xl font-bold text-gray-800 mb-2">準備打菇菇！</h2>
             <p id="modal-msg" class="text-gray-600 mb-6"></p>
-            <button onclick="closeModal()" class="w-full bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200">
-                我知道了
-            </button>
+            <button onclick="closeModal()" class="w-full bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition-colors shadow-lg shadow-green-200">我知道了</button>
         </div>
     </div>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Configuration
-        let app, auth, db, appId;
-        try {
-            const firebaseConfig = JSON.parse(__firebase_config);
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        } catch (e) {
-            console.error("Firebase config error:", e);
-            document.getElementById('sync-status').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 設定錯誤`;
-        }
-
+        // 全域變數定義
+        let app, auth, db, appId, currentUser;
         let locations = [];
-        let currentUser = null;
+        let isCloudMode = false;
 
-        // 1. Auth Logic (Strictly following Rule 3: Auth FIRST then subscribe)
-        const initApp = async () => {
+        // 初始化 Firebase (Rule 3)
+        async function initFirebase() {
             try {
-                // Wait for auth to complete
+                if (typeof __firebase_config === 'undefined') throw new Error("無環境變數");
+                
+                const firebaseConfig = JSON.parse(__firebase_config);
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+                // 先執行驗證
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
 
-                // Setup listener after successful auth
+                // 監聽驗證狀態並訂閱資料
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         currentUser = user;
+                        isCloudMode = true;
                         document.getElementById('user-id-display').textContent = `用戶 ID: ${user.uid}`;
                         setSyncStatus('online');
                         subscribeToData(user.uid);
-                    } else {
-                        setSyncStatus('error');
                     }
                 });
-            } catch (error) {
-                console.error("Initialization failed:", error);
-                setSyncStatus('error');
+            } catch (e) {
+                console.warn("啟動離線模式:", e);
+                startOfflineMode();
             }
-        };
+        }
 
-        // 2. Data Subscription (Rule 1: Private Path)
+        // 離線模式處理 (如果雲端失敗)
+        function startOfflineMode() {
+            isCloudMode = false;
+            setSyncStatus('offline');
+            document.getElementById('user-id-display').textContent = `模式: 離線儲存 (僅限此裝置)`;
+            const localData = localStorage.getItem('pikmin_locations');
+            const loadingState = document.getElementById('loading-state');
+            if (loadingState) loadingState.remove();
+
+            if (localData) {
+                locations = JSON.parse(localData).map(l => ({
+                    ...l,
+                    spawnTime: l.spawnTimestamp ? new Date(l.spawnTimestamp) : null
+                }));
+                renderCards();
+            } else {
+                initializeDefaultData();
+            }
+        }
+
+        // 訂閱雲端資料 (Rule 1)
         function subscribeToData(uid) {
             const colRef = collection(db, 'artifacts', appId, 'users', uid, 'locations');
-            
             onSnapshot(colRef, (snapshot) => {
                 const loadingState = document.getElementById('loading-state');
                 if (loadingState) loadingState.remove();
@@ -176,45 +179,47 @@
                     renderCards();
                 }
             }, (error) => {
-                console.error("Firestore error:", error);
-                setSyncStatus('error');
+                console.error("Firestore 錯誤:", error);
+                startOfflineMode(); // 發生錯誤時降級到離線模式
             });
         }
 
-        async function initializeDefaultData(uid) {
-            const defaults = [
-                "唐獅子", "景福宮", "景福宮石燈", "集英里公告欄右瓢蟲",
-                "新光獅", "流水藝術裝置", "晴光商圈 Flower Tower",
-                "中山國小站2號出口", "妙道院", "集客獅",
-                "吉林路美食", "薇閣精品旅館"
-            ];
+        // 初始化預設資料
+        async function initializeDefaultData(uid = null) {
+            const defaults = ["唐獅子", "景福宮", "景福宮石燈", "集英里公告欄右瓢蟲", "新光獅", "流水藝術裝置", "晴光商圈 Flower Tower", "中山國小站2號出口", "妙道院", "集客獅", "吉林路美食", "薇閣精品旅館"];
             
-            const colRef = collection(db, 'artifacts', appId, 'users', uid, 'locations');
-            for (const name of defaults) {
-                const id = crypto.randomUUID();
-                const docRef = doc(db, 'artifacts', appId, 'users', uid, 'locations', id);
-                await setDoc(docRef, {
-                    name,
-                    h: '', m: '', s: '',
-                    spawnTimestamp: null,
-                    notified: false,
-                    createdAt: Date.now()
-                });
+            const tempLocations = defaults.map(name => ({
+                id: crypto.randomUUID(),
+                name,
+                h: '', m: '', s: '',
+                spawnTimestamp: null,
+                notified: false,
+                createdAt: Date.now()
+            }));
+
+            if (isCloudMode && uid) {
+                for (const loc of tempLocations) {
+                    const docRef = doc(db, 'artifacts', appId, 'users', uid, 'locations', loc.id);
+                    await setDoc(docRef, loc);
+                }
+            } else {
+                locations = tempLocations.map(l => ({...l, spawnTime: null}));
+                saveLocal();
+                renderCards();
             }
         }
 
-        // 3. UI logic
-        window.updateClock = () => {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('zh-TW', { hour12: false });
-            document.getElementById('current-time').textContent = timeStr;
-            checkNotifications(now);
-        };
-        setInterval(window.updateClock, 1000);
+        // 保存到本地
+        function saveLocal() {
+            if (!isCloudMode) {
+                localStorage.setItem('pikmin_locations', JSON.stringify(locations));
+            }
+        }
 
+        // 渲染卡片
         function renderCards() {
             const grid = document.getElementById('mushroom-grid');
-            const sortedLocations = [...locations].sort((a, b) => {
+            const sorted = [...locations].sort((a, b) => {
                 if (a.spawnTime && b.spawnTime) return a.spawnTime - b.spawnTime;
                 if (a.spawnTime) return -1;
                 if (b.spawnTime) return 1;
@@ -222,36 +227,28 @@
             });
 
             grid.innerHTML = '';
-            sortedLocations.forEach((loc) => {
+            sorted.forEach((loc) => {
                 const card = document.createElement('div');
                 card.className = 'mushroom-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:border-green-300';
                 
-                const timeText = loc.spawnTime 
+                const timeStr = loc.spawnTime 
                     ? `${loc.spawnTime.getHours().toString().padStart(2, '0')}:${loc.spawnTime.getMinutes().toString().padStart(2, '0')}:${loc.spawnTime.getSeconds().toString().padStart(2, '0')}`
                     : "-- : -- : --";
                 
-                const resultColor = loc.spawnTime ? "text-green-600" : "text-gray-300";
-
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-3 gap-2">
-                        <input type="text" value="${loc.name}" 
-                               onchange="window.updateName('${loc.id}', this.value)"
-                               class="font-bold text-gray-800 leading-tight bg-transparent border-b border-transparent focus:border-green-500 outline-none w-full py-1 transition-all">
-                        <button onclick="window.deleteLocation('${loc.id}')" class="text-gray-300 hover:text-red-500 transition-colors p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+                        <input type="text" value="${loc.name}" onchange="window.updateName('${loc.id}', this.value)" class="font-bold text-gray-800 leading-tight bg-transparent border-b border-transparent focus:border-green-500 outline-none w-full py-1">
+                        <button onclick="window.deleteLocation('${loc.id}')" class="text-gray-300 hover:text-red-500 p-1"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                     </div>
                     <div class="space-y-4">
                         <div class="flex items-center gap-2">
-                            <input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
-                            <input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
-                            <input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                            <input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
+                            <input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
+                            <input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
                         </div>
                         <div class="pt-3 border-t border-dashed border-gray-100 flex items-center justify-between">
-                            <div id="result-${loc.id}" class="text-xl font-mono font-bold ${resultColor}">${timeText}</div>
-                            <button onclick="window.copyTime('${loc.id}')" class="text-gray-300 hover:text-green-500 transition-colors p-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                            </button>
+                            <div class="text-xl font-mono font-bold ${loc.spawnTime ? 'text-green-600' : 'text-gray-300'}">${timeStr}</div>
+                            <button onclick="window.copyTime('${loc.id}', '${timeStr}')" class="text-gray-300 hover:text-green-500 p-1"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg></button>
                         </div>
                     </div>
                 `;
@@ -259,50 +256,66 @@
             });
         }
 
+        // 全域操作方法
         window.handleInput = async (id, field, value) => {
-            if (!currentUser) return;
             const loc = locations.find(l => l.id === id);
             if (!loc) return;
-            
             loc[field] = value;
+            
             const h = parseInt(loc.h) || 0;
             const m = parseInt(loc.m) || 0;
             const s = parseInt(loc.s) || 0;
-
             let spawnTimestamp = null;
+
             if (loc.h !== '' || loc.m !== '' || loc.s !== '') {
                 spawnTimestamp = Date.now() + ((h * 3600) + (m * 60) + s + 300) * 1000;
+                loc.spawnTime = new Date(spawnTimestamp);
+                loc.spawnTimestamp = spawnTimestamp;
+                loc.notified = false;
             }
 
-            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
-            await setDoc(docRef, { ...loc, spawnTimestamp, notified: false }, { merge: true });
+            if (isCloudMode && currentUser) {
+                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id), { ...loc, spawnTime: null }, { merge: true });
+            } else {
+                saveLocal();
+                renderCards();
+            }
         };
 
         window.updateName = async (id, newName) => {
-            if (!currentUser) return;
-            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
-            await setDoc(docRef, { name: newName }, { merge: true });
+            const loc = locations.find(l => l.id === id);
+            if (!loc) return;
+            loc.name = newName;
+            if (isCloudMode && currentUser) {
+                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id), { name: newName }, { merge: true });
+            } else {
+                saveLocal();
+            }
         };
 
         window.addLocation = async () => {
-            if (!currentUser) return;
-            setSyncStatus('syncing');
             const id = crypto.randomUUID();
-            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
-            await setDoc(docRef, {
-                name: "新地點", h: '', m: '', s: '',
-                spawnTimestamp: null, notified: false, createdAt: Date.now()
-            });
-            setSyncStatus('online');
+            const newLoc = { id, name: "新地點", h: '', m: '', s: '', spawnTimestamp: null, notified: false, createdAt: Date.now() };
+            if (isCloudMode && currentUser) {
+                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id), newLoc);
+            } else {
+                locations.push({...newLoc, spawnTime: null});
+                saveLocal();
+                renderCards();
+            }
         };
 
         window.deleteLocation = async (id) => {
-            if (!currentUser) return;
-            setSyncStatus('syncing');
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id));
-            setSyncStatus('online');
+            if (isCloudMode && currentUser) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id));
+            } else {
+                locations = locations.filter(l => l.id !== id);
+                saveLocal();
+                renderCards();
+            }
         };
 
+        // 通知與提醒
         function checkNotifications(now) {
             locations.forEach(loc => {
                 if (!loc.spawnTime || loc.notified) return;
@@ -310,76 +323,57 @@
                 if (diffSecs <= 120 && diffSecs > 0) {
                     triggerAlert(loc.name);
                     loc.notified = true;
-                    setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', loc.id), { notified: true }, { merge: true });
+                    if (isCloudMode && currentUser) {
+                        setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', loc.id), { notified: true }, { merge: true });
+                    }
                 }
             });
         }
 
-        function triggerAlert(locationName) {
+        function triggerAlert(name) {
             if (Notification.permission === "granted") {
-                const n = new Notification("菇菇重生提醒", {
-                    body: `【${locationName}】將在 2 分鐘後重生！`,
-                    icon: "https://cdn-icons-png.flaticon.com/512/3579/3579130.png",
-                    requireInteraction: true
-                });
-                n.onclick = () => { window.focus(); n.close(); };
+                new Notification("菇菇重生提醒", { body: `【${name}】將在 2 分鐘後重生！`, requireInteraction: true });
             }
             playBeep();
             const modal = document.getElementById('alert-modal');
-            const msg = document.getElementById('modal-msg');
-            msg.innerHTML = `<span class="font-bold text-green-600">${locationName}</span><br>即將在 2 分鐘後重生。`;
+            document.getElementById('modal-msg').innerHTML = `<span class="font-bold text-green-600">${name}</span><br>即將在 2 分鐘後重生。`;
             modal.style.display = 'flex';
-        }
-
-        window.closeModal = () => { document.getElementById('alert-modal').style.display = 'none'; };
-
-        window.requestNotifPermission = () => {
-            if (!("Notification" in window)) return;
-            Notification.requestPermission().then(() => updateNotifUI());
-        };
-
-        function updateNotifUI() {
-            const btn = document.getElementById('notif-btn');
-            if (Notification.permission === "granted") {
-                btn.className = "flex items-center gap-1 text-xs px-4 py-2 bg-green-100 text-green-700 rounded-full cursor-default shadow-sm";
-                btn.textContent = "通知已開啟";
-                btn.onclick = null;
-            }
         }
 
         function setSyncStatus(status) {
             const el = document.getElementById('sync-status');
-            if (status === 'online') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> 雲端連線中`;
-            else if (status === 'syncing') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> 同步中`;
-            else if (status === 'error') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 連線錯誤`;
+            if (status === 'online') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> 雲端同步中`;
+            else if (status === 'offline') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span> 離線儲存模式`;
+            else el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 連線異常`;
         }
 
+        // 時鐘與雜項
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('zh-TW', { hour12: false });
+            checkNotifications(now);
+        }, 1000);
+
+        window.closeModal = () => document.getElementById('alert-modal').style.display = 'none';
+        window.requestNotifPermission = () => Notification.requestPermission();
+        window.copyTime = (id, text) => {
+            if (text.includes("--")) return;
+            const dummy = document.createElement("textarea");
+            document.body.appendChild(dummy); dummy.value = text; dummy.select(); document.execCommand("copy"); document.body.removeChild(dummy);
+            const t = document.getElementById('toast'); t.style.opacity = '1'; setTimeout(() => t.style.opacity = '0', 2000);
+        };
         function playBeep() {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
                 osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
-                gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.start(); osc.stop(ctx.currentTime + 1.5);
-            } catch (e) {}
+                gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
+                osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 1.5);
+            } catch(e) {}
         }
 
-        window.copyTime = (id) => {
-            const text = document.getElementById(`result-${id}`).textContent;
-            if (text.includes("--")) return;
-            const dummy = document.createElement("textarea");
-            document.body.appendChild(dummy); dummy.value = text;
-            dummy.select(); document.execCommand("copy"); document.body.removeChild(dummy);
-            const toast = document.getElementById('toast');
-            toast.style.opacity = '1'; setTimeout(() => { toast.style.opacity = '0'; }, 2000);
-        };
-
-        // Start initialization
-        initApp();
-        // Fallback retry message
+        // 啟動
+        initFirebase();
         setTimeout(() => {
             const msg = document.getElementById('retry-msg');
             if (msg && document.getElementById('loading-state')) msg.classList.remove('hidden');
