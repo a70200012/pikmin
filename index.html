@@ -10,23 +10,17 @@
         body {
             font-family: 'Noto+Sans+TC', sans-serif;
             background-color: #f0fdf4;
-            user-select: none;
+            overflow-x: hidden;
         }
         .mushroom-card {
-            transition: transform 0.2s, box-shadow 0.2s;
-            cursor: grab;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s;
         }
-        .mushroom-card:active {
-            cursor: grabbing;
-        }
+        /* 拖曳中的本體 */
         .mushroom-card.dragging {
-            opacity: 0.5;
+            opacity: 0.2;
             transform: scale(0.95);
         }
-        .drop-target {
-            border: 2px dashed #22c55e;
-            background-color: #f0fdf4;
-        }
+        /* 隱藏數字輸入框箭頭 */
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -36,9 +30,21 @@
             background-color: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(4px);
         }
-        .modal-enter { animation: fadeIn scaleUp 0.3s ease-out; }
+        .modal-enter { animation: scaleUp 0.3s ease-out; }
         @keyframes scaleUp { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .drag-handle {
+            cursor: grab;
+            color: #d1d5db;
+            touch-action: none;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        /* 拖曳中的視覺輔助 */
+        .sortable-ghost {
+            opacity: 0;
+        }
     </style>
 </head>
 <body class="p-4 md:p-8 relative min-h-screen pb-24">
@@ -61,24 +67,15 @@
                     <div class="text-sm text-gray-500 uppercase tracking-wider">目前時間</div>
                     <div id="current-time" class="text-2xl font-mono font-bold text-gray-800">00:00:00</div>
                 </div>
-                <!-- 通知按鈕 -->
                 <button id="notif-btn" onclick="window.toggleNotification()" class="flex items-center gap-2 text-xs px-4 py-2 rounded-full transition-all shadow-md font-medium">
                     <span id="notif-dot" class="w-2 h-2 rounded-full bg-gray-400"></span>
-                    <span id="notif-text">載入通知設定...</span>
+                    <span id="notif-text">偵測通知權限...</span>
                 </button>
                 <button onclick="window.addLocation()" class="flex items-center gap-1 text-xs px-4 py-2 bg-green-600 text-white rounded-full hover:bg-green-700 transition-all shadow-md font-medium">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
                     新增標點
                 </button>
             </div>
-        </div>
-
-        <!-- 提示欄 -->
-        <div class="bg-white/50 border border-green-100 p-4 mb-6 rounded-2xl flex items-center justify-between">
-            <p class="text-sm text-green-700 flex items-center gap-2">
-                <svg class="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                支援<b>手動拖曳卡片排序</b>，順序將自動儲存。
-            </p>
         </div>
 
         <!-- 卡片容器 -->
@@ -89,7 +86,6 @@
             </div>
         </div>
 
-        <!-- 頁尾 -->
         <footer class="mt-12 text-center text-gray-400 text-xs">
             <p id="user-id-display" class="opacity-50">驗證中...</p>
         </footer>
@@ -103,7 +99,7 @@
                     <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </div>
                 <h3 class="text-xl font-bold text-gray-800 mb-2">確定要刪除嗎？</h3>
-                <p class="text-gray-500 mb-6 text-sm">刪除後此標點的歷史記錄與設定將無法找回。</p>
+                <p class="text-gray-500 mb-6 text-sm">刪除後此標點的設定將無法找回。</p>
                 <div class="flex gap-3">
                     <button onclick="window.closeDeleteModal()" class="flex-1 px-4 py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold hover:bg-gray-200 transition-colors">取消</button>
                     <button id="confirm-delete-btn" class="flex-1 px-4 py-3 bg-red-500 text-white rounded-2xl font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-100">確認刪除</button>
@@ -122,7 +118,6 @@
         </div>
     </div>
 
-    <!-- 複製成功提示 -->
     <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-6 py-3 rounded-full opacity-0 transition-opacity duration-300 pointer-events-none z-[200] text-sm backdrop-blur-md shadow-xl">
         時間已複製！
     </div>
@@ -132,13 +127,12 @@
         import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase 初始化
         let app, auth, db, appId, currentUser;
         let locations = [];
         let isCloudMode = false;
         let deleteTargetId = null;
-        let draggedId = null;
-        let isNotifEnabled = localStorage.getItem('notif_enabled') !== 'false'; // 預設開啟
+        let draggedElement = null;
+        let isNotifEnabled = localStorage.getItem('notif_enabled') !== 'false'; 
 
         async function init() {
             try {
@@ -165,7 +159,6 @@
                     }
                 });
             } catch (e) {
-                console.warn("離線模式啟動");
                 startOfflineMode();
             }
         }
@@ -189,15 +182,23 @@
                 const loader = document.getElementById('loading-state');
                 if (loader) loader.remove();
 
+                // 核心修復：如果用戶正在打字，不要重新渲染整頁，只更新背景資料
+                const activeEl = document.activeElement;
+                const isTyping = activeEl && activeEl.tagName === 'INPUT';
+
+                const newLocations = snap.docs.map(d => ({
+                    id: d.id,
+                    ...d.data(),
+                    spawnTime: d.data().spawnTimestamp ? new Date(d.data().spawnTimestamp) : null
+                })).sort((a, b) => (a.order || 0) - (b.order || 0));
+
                 if (snap.empty) {
                     initializeDefaultData(uid);
                 } else {
-                    locations = snap.docs.map(d => ({
-                        id: d.id,
-                        ...d.data(),
-                        spawnTime: d.data().spawnTimestamp ? new Date(d.data().spawnTimestamp) : null
-                    })).sort((a, b) => (a.order || 0) - (b.order || 0));
-                    renderCards();
+                    locations = newLocations;
+                    if (!isTyping && !draggedElement) {
+                        renderCards();
+                    }
                 }
             }, () => startOfflineMode());
         }
@@ -226,79 +227,50 @@
             if (!isCloudMode) localStorage.setItem('pikmin_locations_v2', JSON.stringify(locations));
         }
 
-        // 卡片渲染與拖曳
-        function renderCards() {
-            const grid = document.getElementById('mushroom-grid');
-            grid.innerHTML = '';
-            
-            locations.forEach((loc, index) => {
-                const card = document.createElement('div');
-                card.className = `mushroom-card bg-white rounded-3xl p-5 border border-green-50 shadow-sm hover:shadow-md transition-all ${draggedId === loc.id ? 'dragging' : ''}`;
-                card.draggable = true;
-                card.dataset.id = loc.id;
-                card.dataset.index = index;
+        function setupDragEvents(card) {
+            card.addEventListener('dragstart', (e) => {
+                draggedElement = card;
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => card.classList.add('dragging'), 0);
+            });
 
-                card.ondragstart = (e) => {
-                    draggedId = loc.id;
-                    e.dataTransfer.effectAllowed = 'move';
-                    setTimeout(() => card.classList.add('dragging'), 0);
-                };
-                card.ondragend = () => {
-                    draggedId = null;
-                    card.classList.remove('dragging');
-                    document.querySelectorAll('.mushroom-card').forEach(c => c.classList.remove('drop-target'));
-                };
-                card.ondragover = (e) => {
-                    e.preventDefault();
-                    card.classList.add('drop-target');
-                };
-                card.ondragleave = () => card.classList.remove('drop-target');
-                card.ondrop = (e) => {
-                    e.preventDefault();
-                    handleDrop(index);
-                };
+            card.addEventListener('dragend', () => {
+                card.classList.remove('dragging');
+                draggedElement = null;
+                saveNewOrder();
+            });
 
-                const timeStr = loc.spawnTime 
-                    ? `${loc.spawnTime.getHours().toString().padStart(2, '0')}:${loc.spawnTime.getMinutes().toString().padStart(2, '0')}:${loc.spawnTime.getSeconds().toString().padStart(2, '0')}`
-                    : "-- : -- : --";
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (card === draggedElement) return;
+                
+                const grid = document.getElementById('mushroom-grid');
+                const children = [...grid.children];
+                const draggedIndex = children.indexOf(draggedElement);
+                const targetIndex = children.indexOf(card);
 
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-3 gap-2">
-                        <div class="flex-1">
-                            <input type="text" value="${loc.name}" onchange="window.updateName('${loc.id}', this.value)" 
-                                   class="font-bold text-gray-800 leading-tight bg-transparent border-b border-transparent focus:border-green-500 outline-none w-full py-1 text-lg">
-                        </div>
-                        <button onclick="window.confirmDelete('${loc.id}')" class="text-gray-300 hover:text-red-500 p-1 transition-colors">
-                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                    </div>
-                    <div class="space-y-4">
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1"><input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-green-50/50 border border-green-100 rounded-xl px-1 py-3 text-center font-mono focus:ring-2 focus:ring-green-500 outline-none"></div>
-                            <div class="flex-1"><input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-green-50/50 border border-green-100 rounded-xl px-1 py-3 text-center font-mono focus:ring-2 focus:ring-green-500 outline-none"></div>
-                            <div class="flex-1"><input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-green-50/50 border border-green-100 rounded-xl px-1 py-3 text-center font-mono focus:ring-2 focus:ring-green-500 outline-none"></div>
-                        </div>
-                        <div class="pt-3 border-t border-dashed border-green-100 flex items-center justify-between">
-                            <div class="text-xl font-mono font-bold ${loc.spawnTime ? 'text-green-600' : 'text-gray-300'}">${timeStr}</div>
-                            <button onclick="window.copyTime('${timeStr}')" class="text-gray-300 hover:text-green-500 p-2 transition-colors">
-                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                            </button>
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(card);
+                // 增加直覺感：即時改變 DOM 位置
+                if (draggedIndex < targetIndex) {
+                    grid.insertBefore(draggedElement, card.nextSibling);
+                } else {
+                    grid.insertBefore(draggedElement, card);
+                }
             });
         }
 
-        async function handleDrop(targetIndex) {
-            const dragIndex = locations.findIndex(l => l.id === draggedId);
-            if (dragIndex === targetIndex) return;
-
-            const [movedItem] = locations.splice(dragIndex, 1);
-            locations.splice(targetIndex, 0, movedItem);
-
-            locations = locations.map((l, i) => ({ ...l, order: i }));
-            renderCards();
+        async function saveNewOrder() {
+            const grid = document.getElementById('mushroom-grid');
+            const newLocations = [];
+            [...grid.children].forEach((cardEl, i) => {
+                const id = cardEl.dataset.id;
+                const loc = locations.find(l => l.id === id);
+                if (loc) {
+                    loc.order = i;
+                    newLocations.push(loc);
+                }
+            });
+            
+            locations = newLocations;
 
             if (isCloudMode && currentUser) {
                 for (const loc of locations) {
@@ -309,12 +281,59 @@
             }
         }
 
-        // 方法掛載
+        function renderCards() {
+            const grid = document.getElementById('mushroom-grid');
+            grid.innerHTML = '';
+            
+            locations.forEach((loc) => {
+                const card = document.createElement('div');
+                card.className = `mushroom-card bg-white rounded-3xl p-5 border border-green-50 shadow-sm hover:shadow-md`;
+                card.draggable = true;
+                card.dataset.id = loc.id;
+
+                const timeStr = loc.spawnTime 
+                    ? `${loc.spawnTime.getHours().toString().padStart(2, '0')}:${loc.spawnTime.getMinutes().toString().padStart(2, '0')}:${loc.spawnTime.getSeconds().toString().padStart(2, '0')}`
+                    : "-- : -- : --";
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3 gap-2">
+                        <div class="drag-handle p-1 hover:text-green-600 transition-colors">
+                            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <input type="text" value="${loc.name}" onchange="window.updateName('${loc.id}', this.value)" 
+                                   class="font-bold text-gray-800 leading-tight bg-transparent border-b border-transparent focus:border-green-500 outline-none w-full py-1 text-lg">
+                        </div>
+                        <button onclick="window.confirmDelete('${loc.id}')" class="text-gray-300 hover:text-red-500 p-1 flex-shrink-0">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1"><input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-green-50/50 border border-green-100 rounded-xl px-2 py-3 text-center font-mono focus:ring-2 focus:ring-green-500 outline-none"></div>
+                            <div class="flex-1"><input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-green-50/50 border border-green-100 rounded-xl px-2 py-3 text-center font-mono focus:ring-2 focus:ring-green-500 outline-none"></div>
+                            <div class="flex-1"><input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-green-50/50 border border-green-100 rounded-xl px-2 py-3 text-center font-mono focus:ring-2 focus:ring-green-500 outline-none"></div>
+                        </div>
+                        <div class="pt-3 border-t border-dashed border-green-100 flex items-center justify-between">
+                            <div class="text-xl font-mono font-bold ${loc.spawnTime ? 'text-green-600' : 'text-gray-300'}">${timeStr}</div>
+                            <button onclick="window.copyTime('${timeStr}')" class="text-gray-300 hover:text-green-500 p-2">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                setupDragEvents(card);
+                grid.appendChild(card);
+            });
+        }
+
         window.handleInput = async (id, field, val) => {
             const loc = locations.find(l => l.id === id);
             if (!loc) return;
             loc[field] = val;
+            
             const h = parseInt(loc.h) || 0, m = parseInt(loc.m) || 0, s = parseInt(loc.s) || 0;
+            
             let ts = null;
             if (loc.h !== '' || loc.m !== '' || loc.s !== '') {
                 ts = Date.now() + ((h * 3600) + (m * 60) + s + 300) * 1000;
@@ -325,11 +344,27 @@
                 loc.spawnTime = null;
                 loc.spawnTimestamp = null;
             }
+
+            // 即時更新該卡片的結果顯示
+            const cardEl = document.querySelector(`[data-id="${id}"]`);
+            if (cardEl) {
+                const resEl = cardEl.querySelector('.text-xl');
+                if (loc.spawnTime) {
+                    const hStr = loc.spawnTime.getHours().toString().padStart(2, '0');
+                    const mStr = loc.spawnTime.getMinutes().toString().padStart(2, '0');
+                    const sStr = loc.spawnTime.getSeconds().toString().padStart(2, '0');
+                    resEl.textContent = `${hStr}:${mStr}:${sStr}`;
+                    resEl.className = "text-xl font-mono font-bold text-green-600";
+                } else {
+                    resEl.textContent = "-- : -- : --";
+                    resEl.className = "text-xl font-mono font-bold text-gray-300";
+                }
+            }
+
             if (isCloudMode && currentUser) {
                 await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id), { ...loc, spawnTime: null }, { merge: true });
             } else {
                 saveLocal();
-                renderCards();
             }
         };
 
@@ -382,16 +417,13 @@
             setSyncStatus('online');
         };
 
-        // --- 通知邏輯優化 ---
         window.toggleNotification = () => {
             const state = Notification.permission;
             if (state === 'denied') {
-                alert("通知權限已被瀏覽器封鎖。請在網址列左側點擊「鎖頭」圖示，手動將通知設為「允許」後重新整理網頁。");
+                alert("通知權限已被瀏覽器封鎖。請點擊網址列左側圖示，手動將通知設為「允許」。");
                 return;
             }
-
             if (state === 'default') {
-                // 第一次請求
                 Notification.requestPermission().then(() => {
                     isNotifEnabled = (Notification.permission === 'granted');
                     localStorage.setItem('notif_enabled', isNotifEnabled);
@@ -399,8 +431,6 @@
                 });
                 return;
             }
-
-            // 如果已經是 granted，則執行開關切換
             isNotifEnabled = !isNotifEnabled;
             localStorage.setItem('notif_enabled', isNotifEnabled);
             updateNotifUI();
@@ -413,30 +443,28 @@
             const state = Notification.permission;
 
             if (state === 'denied') {
-                btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-red-100 text-red-700 rounded-full shadow-sm cursor-pointer border border-red-200";
+                btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-red-100 text-red-700 rounded-full shadow-sm border border-red-200";
                 dot.className = "w-2 h-2 rounded-full bg-red-500";
-                text.textContent = "通知已被封鎖 (點擊查看如何修正)";
+                text.textContent = "通知權限遭封鎖";
             } else if (state === 'granted') {
                 if (isNotifEnabled) {
-                    btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-green-600 text-white rounded-full shadow-sm cursor-pointer border border-green-700";
+                    btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-green-600 text-white rounded-full shadow-sm border border-green-700";
                     dot.className = "w-2 h-2 rounded-full bg-white animate-pulse";
-                    text.textContent = "通知功能：已啟用 (點擊關閉)";
+                    text.textContent = "通知：已開啟";
                 } else {
-                    btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-gray-200 text-gray-600 rounded-full shadow-sm cursor-pointer border border-gray-300";
+                    btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-gray-200 text-gray-600 rounded-full shadow-sm border border-gray-300";
                     dot.className = "w-2 h-2 rounded-full bg-gray-400";
-                    text.textContent = "通知功能：已關閉 (點擊開啟)";
+                    text.textContent = "通知：已關閉";
                 }
             } else {
-                // 初始狀態 (default)
-                btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-blue-500 text-white rounded-full shadow-sm cursor-pointer hover:bg-blue-600 border border-blue-700";
+                btn.className = "flex items-center gap-2 text-xs px-4 py-2 bg-blue-500 text-white rounded-full shadow-sm hover:bg-blue-600";
                 dot.className = "w-2 h-2 rounded-full bg-white";
-                text.textContent = "開啟通知提醒";
+                text.textContent = "點擊開啟通知";
             }
         }
 
         function checkNotifications(now) {
             if (!isNotifEnabled || Notification.permission !== 'granted') return;
-
             locations.forEach(loc => {
                 if (!loc.spawnTime || loc.notified) return;
                 const diff = Math.floor((loc.spawnTime.getTime() - now.getTime()) / 1000);
@@ -450,7 +478,7 @@
 
         function triggerAlert(name) {
             if (isNotifEnabled && Notification.permission === 'granted') {
-                const n = new Notification("菇菇重生提醒", { body: `【${name}】即將在 2 分鐘後重生！`, icon: "https://cdn-icons-png.flaticon.com/512/3579/3579130.png", requireInteraction: true });
+                const n = new Notification("菇菇重生提醒", { body: `【${name}】即將在 2 分鐘後重生！`, requireInteraction: true });
                 n.onclick = () => { window.focus(); n.close(); };
             }
             playBeep();
