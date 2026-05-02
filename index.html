@@ -40,7 +40,7 @@
                 </h1>
                 <div class="flex items-center gap-2 mt-1">
                     <p class="text-green-600 text-sm">重生機制：+5 分鐘</p>
-                    <span id="sync-status" class="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full flex items-center gap-1">
+                    <span id="sync-status" class="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full flex items-center gap-1 transition-all">
                         <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span> 連線中...
                     </span>
                 </div>
@@ -77,15 +77,16 @@
 
         <!-- Grid Container -->
         <div id="mushroom-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Loading state -->
-            <div class="col-span-full py-12 text-center text-gray-400">
-                正在載入您的標點資料...
+            <div id="loading-state" class="col-span-full py-24 text-center text-gray-400 flex flex-col items-center gap-4">
+                <div class="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
+                <p>正在載入您的個人標點資料...</p>
+                <p id="retry-msg" class="text-xs hidden">連線時間過長？請嘗試重新整理網頁。</p>
             </div>
         </div>
 
         <!-- Footer -->
         <footer class="mt-12 text-center text-gray-400 text-xs pb-8">
-            <p id="user-id-display">用戶 ID: 載入中...</p>
+            <p id="user-id-display">用戶 ID: 驗證中...</p>
             <p class="mt-1">本工具提供個人化雲端儲存，確保資料長期有效</p>
         </footer>
     </div>
@@ -113,44 +114,58 @@
         import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Configuration from environment
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // Firebase Configuration
+        let app, auth, db, appId;
+        try {
+            const firebaseConfig = JSON.parse(__firebase_config);
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        } catch (e) {
+            console.error("Firebase config error:", e);
+            document.getElementById('sync-status').innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 設定錯誤`;
+        }
 
         let locations = [];
         let currentUser = null;
 
-        // 1. Auth Logic (Rule 3)
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+        // 1. Auth Logic (Strictly following Rule 3: Auth FIRST then subscribe)
+        const initApp = async () => {
+            try {
+                // Wait for auth to complete
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Setup listener after successful auth
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        document.getElementById('user-id-display').textContent = `用戶 ID: ${user.uid}`;
+                        setSyncStatus('online');
+                        subscribeToData(user.uid);
+                    } else {
+                        setSyncStatus('error');
+                    }
+                });
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                setSyncStatus('error');
             }
         };
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                document.getElementById('user-id-display').textContent = `用戶 ID: ${user.uid}`;
-                setSyncStatus('online');
-                subscribeToData(user.uid);
-            } else {
-                initAuth();
-            }
-        });
 
         // 2. Data Subscription (Rule 1: Private Path)
         function subscribeToData(uid) {
             const colRef = collection(db, 'artifacts', appId, 'users', uid, 'locations');
             
-            // Listen for changes
             onSnapshot(colRef, (snapshot) => {
+                const loadingState = document.getElementById('loading-state');
+                if (loadingState) loadingState.remove();
+
                 if (snapshot.empty) {
-                    // 如果是新用戶，初始化預設 12 個點
                     initializeDefaultData(uid);
                 } else {
                     locations = snapshot.docs.map(doc => ({
@@ -174,6 +189,7 @@
                 "吉林路美食", "薇閣精品旅館"
             ];
             
+            const colRef = collection(db, 'artifacts', appId, 'users', uid, 'locations');
             for (const name of defaults) {
                 const id = crypto.randomUUID();
                 const docRef = doc(db, 'artifacts', appId, 'users', uid, 'locations', id);
@@ -198,7 +214,6 @@
 
         function renderCards() {
             const grid = document.getElementById('mushroom-grid');
-            
             const sortedLocations = [...locations].sort((a, b) => {
                 if (a.spawnTime && b.spawnTime) return a.spawnTime - b.spawnTime;
                 if (a.spawnTime) return -1;
@@ -227,12 +242,10 @@
                         </button>
                     </div>
                     <div class="space-y-4">
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
-                                <input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
-                                <input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all">
-                            </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" value="${loc.h}" placeholder="時" oninput="window.handleInput('${loc.id}', 'h', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                            <input type="number" value="${loc.m}" placeholder="分" oninput="window.handleInput('${loc.id}', 'm', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                            <input type="number" value="${loc.s}" placeholder="秒" oninput="window.handleInput('${loc.id}', 's', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-1 py-2 text-center text-sm focus:ring-2 focus:ring-green-500 outline-none">
                         </div>
                         <div class="pt-3 border-t border-dashed border-gray-100 flex items-center justify-between">
                             <div id="result-${loc.id}" class="text-xl font-mono font-bold ${resultColor}">${timeText}</div>
@@ -246,7 +259,6 @@
             });
         }
 
-        // 暴露給全域的方法
         window.handleInput = async (id, field, value) => {
             if (!currentUser) return;
             const loc = locations.find(l => l.id === id);
@@ -259,22 +271,11 @@
 
             let spawnTimestamp = null;
             if (loc.h !== '' || loc.m !== '' || loc.s !== '') {
-                const totalSeconds = (h * 3600) + (m * 60) + s;
-                spawnTimestamp = Date.now() + (totalSeconds + 300) * 1000;
+                spawnTimestamp = Date.now() + ((h * 3600) + (m * 60) + s + 300) * 1000;
             }
 
-            // 更新到 Firestore
             const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
-            await setDoc(docRef, {
-                ...loc,
-                spawnTimestamp,
-                notified: false,
-                spawnTime: null // 清除循環引用
-            }, { merge: true });
-
-            // 觸發局部 UI 更新 (提升流暢度)
-            clearTimeout(window.sortTimeout);
-            window.sortTimeout = setTimeout(() => { renderCards(); }, 5000);
+            await setDoc(docRef, { ...loc, spawnTimestamp, notified: false }, { merge: true });
         };
 
         window.updateName = async (id, newName) => {
@@ -289,11 +290,8 @@
             const id = crypto.randomUUID();
             const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
             await setDoc(docRef, {
-                name: "新地點",
-                h: '', m: '', s: '',
-                spawnTimestamp: null,
-                notified: false,
-                createdAt: Date.now()
+                name: "新地點", h: '', m: '', s: '',
+                spawnTimestamp: null, notified: false, createdAt: Date.now()
             });
             setSyncStatus('online');
         };
@@ -301,8 +299,7 @@
         window.deleteLocation = async (id) => {
             if (!currentUser) return;
             setSyncStatus('syncing');
-            const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id);
-            await deleteDoc(docRef);
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', id));
             setSyncStatus('online');
         };
 
@@ -313,9 +310,7 @@
                 if (diffSecs <= 120 && diffSecs > 0) {
                     triggerAlert(loc.name);
                     loc.notified = true;
-                    // 更新通知狀態到資料庫，避免重複通知
-                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', loc.id);
-                    setDoc(docRef, { notified: true }, { merge: true });
+                    setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'locations', loc.id), { notified: true }, { merge: true });
                 }
             });
         }
@@ -323,7 +318,7 @@
         function triggerAlert(locationName) {
             if (Notification.permission === "granted") {
                 const n = new Notification("菇菇重生提醒", {
-                    body: `【${locationName}】即將在 2 分鐘後重生！`,
+                    body: `【${locationName}】將在 2 分鐘後重生！`,
                     icon: "https://cdn-icons-png.flaticon.com/512/3579/3579130.png",
                     requireInteraction: true
                 });
@@ -354,14 +349,9 @@
 
         function setSyncStatus(status) {
             const el = document.getElementById('sync-status');
-            const dot = el.querySelector('span');
-            if (status === 'online') {
-                el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> 雲端連線中`;
-            } else if (status === 'syncing') {
-                el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> 同步資料中`;
-            } else if (status === 'error') {
-                el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 連線錯誤`;
-            }
+            if (status === 'online') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> 雲端連線中`;
+            else if (status === 'syncing') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> 同步中`;
+            else if (status === 'error') el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> 連線錯誤`;
         }
 
         function playBeep() {
@@ -369,30 +359,31 @@
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
                 gain.gain.setValueAtTime(0.1, ctx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
+                osc.connect(gain); gain.connect(ctx.destination);
                 osc.start(); osc.stop(ctx.currentTime + 1.5);
             } catch (e) {}
         }
 
         window.copyTime = (id) => {
-            const el = document.getElementById(`result-${id}`);
-            const text = el ? el.textContent : "";
+            const text = document.getElementById(`result-${id}`).textContent;
             if (text.includes("--")) return;
             const dummy = document.createElement("textarea");
-            document.body.appendChild(dummy);
-            dummy.value = text;
-            dummy.select();
-            document.execCommand("copy");
-            document.body.removeChild(dummy);
+            document.body.appendChild(dummy); dummy.value = text;
+            dummy.select(); document.execCommand("copy"); document.body.removeChild(dummy);
             const toast = document.getElementById('toast');
-            toast.style.opacity = '1';
-            setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+            toast.style.opacity = '1'; setTimeout(() => { toast.style.opacity = '0'; }, 2000);
         };
+
+        // Start initialization
+        initApp();
+        // Fallback retry message
+        setTimeout(() => {
+            const msg = document.getElementById('retry-msg');
+            if (msg && document.getElementById('loading-state')) msg.classList.remove('hidden');
+        }, 8000);
     </script>
 </body>
 </html>
